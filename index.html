@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>לומדת משוואות מילוליות - רמה ז'</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Rubik', sans-serif;
+            background-color: #f0fdf4; /* Tailwind green-50 */
+            color: #1f2937;
+        }
+
+        /* LTR formatting for math expressions */
+        .math-expr {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background: #f1f5f9;
+            padding: 0.1rem 0.5rem;
+            margin: 0 0.2rem;
+            border-radius: 0.25rem;
+            color: #2563eb;
+            direction: ltr !important;
+            unicode-bidi: embed;
+            display: inline-block;
+            font-size: 1.15em;
+            font-weight: 500;
+        }
+
+        .option-btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .option-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+        const shuffle = (array) => [...array].sort(() => Math.random() - 0.5);
+
+        // Helper to format math text nicely wrapping $...$ strings
+        const renderMathText = (text) => {
+            if (!text) return null;
+            const parts = text.split(/\$([^$]+)\$/g);
+            return parts.map((part, i) => {
+                if (i % 2 !== 0) {
+                    return <span key={i} className="math-expr">{part}</span>;
+                }
+                return <span key={i}>{part}</span>;
+            });
+        };
+
+        const generateOptions = (correctAnswer) => {
+            const options = new Set([correctAnswer]);
+            while(options.size < 4) {
+                const offset = rand(-5, 5);
+                if (offset !== 0 && (correctAnswer + offset) > 0) {
+                    options.add(correctAnswer + offset);
+                } else if (options.size < 4) {
+                    options.add(correctAnswer + rand(1, 15));
+                }
+            }
+            return shuffle(Array.from(options));
+        };
+
+        const formatDateTime = (date) => {
+            if (!date) return '';
+            return date.toLocaleString('he-IL', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            });
+        };
+
+        const formatDuration = (start, end) => {
+            if (!start || !end) return '';
+            const diffMs = end - start;
+            const totalSeconds = Math.floor(diffMs / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            if (minutes === 0) return `${seconds} שניות`;
+            return `${minutes} דקות ו-${seconds} שניות`;
+        };
+
+        const App = () => {
+            const [step, setStep] = React.useState('setup'); 
+            const [userName, setUserName] = React.useState('');
+            const [userGender, setUserGender] = React.useState('');
+            const [questionIndex, setQuestionIndex] = React.useState(0);
+            const [inRemedial, setInRemedial] = React.useState(false);
+            const [currentQ, setCurrentQ] = React.useState(null);
+            const [feedback, setFeedback] = React.useState(null); 
+            const [isTransitioning, setIsTransitioning] = React.useState(false);
+            
+            const [startTime, setStartTime] = React.useState(null);
+            const [endTime, setEndTime] = React.useState(null);
+
+            const g = (maleText, femaleText) => userGender === 'male' ? maleText : femaleText;
+
+            const praisesMale = ["אתה תותח", "כל הכבוד", "מצוין", "מעולה", "אלוף", "עבודה יפה"];
+            const praisesFemale = ["את תותחית", "כל הכבוד", "מצוינת", "מעולה", "אלופה", "עבודה יפה"];
+            const getRandomPraise = () => {
+                const list = userGender === 'male' ? praisesMale : praisesFemale;
+                return list[rand(0, list.length - 1)];
+            };
+
+            // 10 7th-grade algebra specific generators
+            const questionGenerators = [
+                // Q1: Items ratio + sum
+                () => {
+                    const factor = rand(2, 5);
+                    const x = rand(5, 12); // amount of orange trees
+                    const total = x + (factor * x);
+                    return {
+                        text: `בגינה יש עצי תפוח ועצי תפוז. מספר עצי התפוח גדול פי ${factor} ממספר עצי התפוז. יחד יש בגינה ${total} עצים. כמה עצי תפוז יש?`,
+                        explanation: `נסמן את מספר עצי התפוז ב-$x$. לכן מספר עצי התפוח הוא $${factor}x$. סכום העצים הוא $${total}$. המשוואה היא: $x + ${factor}x = ${total}$. נכנס איברים דומים: $${factor+1}x = ${total}$. נחלק ב-${factor+1} ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q2: Two items, difference, sum
+                () => {
+                    const diff = rand(15, 30);
+                    const x = rand(20, 50); // price of book
+                    const total = x + (x + diff);
+                    return {
+                        text: `מחיר משחק מחשב יקר ב-${diff} שקלים ממחיר ספר. דן קנה משחק וספר ושילם סך הכל ${total} שקלים. מה מחירו של הספר?`,
+                        explanation: `נסמן את מחיר הספר ב-$x$. לכן מחיר המשחק הוא $x + ${diff}$. סך כל הקנייה היא $${total}$. המשוואה: $x + (x + ${diff}) = ${total}$. נכנס איברים: $2x + ${diff} = ${total}$. נחסר $${diff}$ משני האגפים: $2x = ${total - diff}$. נחלק ב-2 ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q3: Equalizing two linear models (variables on both sides)
+                () => {
+                    const rateA = rand(3, 6);
+                    const rateB = rateA + rand(2, 4);
+                    const x = rand(5, 12); // equal hours
+                    const fixedB = rand(20, 40);
+                    const fixedA = fixedB + x * (rateB - rateA);
+                    return {
+                        text: `בחברת השכרת אופניים "גלגל" משלמים תשלום התחלתי של ${fixedA} שקלים ועוד ${rateA} שקלים לכל שעת רכיבה. בחברת "פדל" משלמים תשלום התחלתי של ${fixedB} שקלים ועוד ${rateB} שקלים לכל שעת רכיבה. עבור כמה שעות רכיבה המחיר בשתי החברות יהיה זהה?`,
+                        explanation: `נסמן את מספר השעות ב-$x$. התשלום ב"גלגל" הוא $${fixedA} + ${rateA}x$. התשלום ב"פדל" הוא $${fixedB} + ${rateB}x$. נשווה: $${fixedA} + ${rateA}x = ${fixedB} + ${rateB}x$. נחסר $${rateA}x$ ו-$${fixedB}$ משני האגפים: $${fixedA - fixedB} = ${rateB - rateA}x$. נחלק ב-${rateB - rateA} ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q4: Perimeter of rectangle
+                () => {
+                    const x = rand(5, 12); // width
+                    const diff = rand(2, 6); // length extra
+                    const p = 2 * (x + x + diff);
+                    return {
+                        text: `אורך מלבן גדול ב-${diff} ס"מ מרוחבו. היקף המלבן הוא ${p} ס"מ. מהו רוחב המלבן (בס"מ)?`,
+                        explanation: `נסמן את רוחב המלבן ב-$x$. אורך המלבן הוא $x + ${diff}$. היקף המלבן הוא פעמיים הסכום של האורך והרוחב: $2(x + x + ${diff}) = ${p}$. נכנס איברים: $2(2x + ${diff}) = ${p}$. נפתח סוגריים: $4x + ${2*diff} = ${p}$. נחסר $${2*diff}$ ונקבל $4x = ${p - 2*diff}$. נחלק ב-4 ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q5: Ratio + constant = total
+                () => {
+                    const x = rand(10, 20); // girls
+                    const factor = rand(2, 3); // boys are factor * girls
+                    const extra = rand(3, 8); // teachers
+                    const total = x + (factor * x) + extra;
+                    return {
+                        text: `בטיול השתתפו תלמידים ומורים. מספר הבנים היה גדול פי ${factor} ממספר הבנות. בנוסף יצאו עוד ${extra} מורים. סך הכל יצאו ${total} אנשים לטיול. כמה בנות יצאו לטיול?`,
+                        explanation: `נסמן את מספר הבנות ב-$x$. מספר הבנים הוא $${factor}x$. יחד עם המורים סך המשתתפים הוא $x + ${factor}x + ${extra} = ${total}$. נכנס איברים: $${factor+1}x + ${extra} = ${total}$. נחסר $${extra}$ משני האגפים: $${factor+1}x = ${total - extra}$. נחלק ב-${factor+1} ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q6: Grouping (distributive property)
+                () => {
+                    const x = rand(20, 40); // allowance per kid
+                    const spent = rand(5, 15); // spent on candy
+                    const kids = rand(3, 5);
+                    const totalLeft = kids * (x - spent);
+                    return {
+                        text: `אמא חילקה דמי כיס שווים ל-${kids} ילדיה. כל ילד קנה לעצמו ממתק ב-${spent} שקלים. לאחר מכן, התברר שלכל הילדים יחד נשארו ${totalLeft} שקלים. כמה דמי כיס קיבל כל ילד מהאמא?`,
+                        explanation: `נסמן את סכום דמי הכיס שכל ילד קיבל ב-$x$. לאחר קניית הממתק, נשאר לכל ילד $x - ${spent}$. מכיוון שיש ${kids} ילדים, הסכום הכולל שנשאר הוא $${kids}(x - ${spent}) = ${totalLeft}$. נחלק את שני האגפים ב-${kids} ונקבל $x - ${spent} = ${totalLeft / kids}$. נוסיף $${spent}$ ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q7: Ages relationship (future)
+                () => {
+                    const x = rand(6, 12); // son's age
+                    const factor = rand(3, 4); // father is factor * son
+                    const years = rand(4, 8); // years into future
+                    const sumFuture = (x + years) + (factor * x + years);
+                    return {
+                        text: `גילו של אבא הוא פי ${factor} מגילו של בנו. בעוד ${years} שנים, סכום הגילאים של שניהם יהיה ${sumFuture}. בן כמה הבן היום?`,
+                        explanation: `נסמן את גיל הבן היום ב-$x$. גיל האבא היום הוא $${factor}x$. בעוד ${years} שנים, גיל הבן יהיה $x + ${years}$ וגיל האבא יהיה $${factor}x + ${years}$. סכום הגילאים יהיה $${sumFuture}$. לכן: $(x + ${years}) + (${factor}x + ${years}) = ${sumFuture}$. נכנס איברים: $${factor+1}x + ${2*years} = ${sumFuture}$. נחסר $${2*years}$ ונקבל $${factor+1}x = ${sumFuture - 2*years}$. נחלק ב-${factor+1} ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q8: Variables on both sides with parentheses (Change problem)
+                () => {
+                    const spent2 = rand(30, 50); // Dana spent
+                    const spent1 = rand(10, 20); // Yoni spent
+                    const x = 2 * spent2 - spent1; // derived so Yoni has double Dana
+                    return {
+                        text: `לשני אחים, יוני ודנה, היה סכום כסף התחלתי זהה. יוני קנה ספר ב-${spent1} שקלים, ודנה קנתה משחק ב-${spent2} שקלים. כעת ידוע שליוני נשאר פי 2 יותר כסף מאשר לדנה. כמה כסף היה לכל אחד מהם בהתחלה?`,
+                        explanation: `נסמן את הסכום ההתחלתי של כל אחד ב-$x$. ליוני נשאר $x - ${spent1}$ ולדנה נשאר $x - ${spent2}$. ליוני נשאר פי 2, לכן המשוואה היא: $x - ${spent1} = 2(x - ${spent2})$. נפתח סוגריים: $x - ${spent1} = 2x - ${2*spent2}$. נחסר $x$ משני האגפים ונוסיף $${2*spent2}$, ונקבל: $x = ${2*spent2 - spent1}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q9: Multiple quantities with price relations
+                () => {
+                    const x = rand(30, 50); // shirt price
+                    const diff = rand(15, 30); // pants difference
+                    const q1 = rand(2, 4); // shirts
+                    const q2 = rand(2, 3); // pants
+                    const total = q1 * x + q2 * (x + diff);
+                    return {
+                        text: `תמר קנתה ${q1} חולצות ו-${q2} זוגות מכנסיים. מחיר מכנסיים יקר ב-${diff} שקלים ממחיר חולצה. סך הכל תמר שילמה ${total} שקלים. מה מחירו של חולצה אחת?`,
+                        explanation: `נסמן את מחיר החולצה ב-$x$. מחיר המכנסיים הוא $x + ${diff}$. המחיר על כל החולצות הוא $${q1}x$ ועל המכנסיים $${q2}(x + ${diff})$. סך הכל: $${q1}x + ${q2}(x + ${diff}) = ${total}$. נפתח סוגריים: $${q1}x + ${q2}x + ${q2*diff} = ${total}$. נכנס איברים: $${q1+q2}x + ${q2*diff} = ${total}$. נחסר $${q2*diff}$ ונקבל $${q1+q2}x = ${total - q2*diff}$. נחלק ב-${q1+q2} ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                },
+                // Q10: Value of coins
+                () => {
+                    const x = rand(4, 9); // 10-shekel coins
+                    const diff = rand(3, 7); // extra 5-shekel coins
+                    const totalVal = 10 * x + 5 * (x + diff);
+                    return {
+                        text: `בקופה יש מטבעות של 10 שקלים ו-5 שקלים בלבד. מספר המטבעות של 5 שקלים גדול ב-${diff} ממספר המטבעות של 10 שקלים. סך הכסף בקופה הוא ${totalVal} שקלים. כמה מטבעות של 10 שקלים יש בקופה?`,
+                        explanation: `נסמן את מספר מטבעות ה-10 שקלים ב-$x$. מספר מטבעות ה-5 הוא $x + ${diff}$. הערך של מטבעות ה-10 הוא $10x$, ושל ה-5 הוא $5(x + ${diff})$. יחד: $10x + 5(x + ${diff}) = ${totalVal}$. נפתח סוגריים: $10x + 5x + ${5*diff} = ${totalVal}$. נכנס איברים: $15x + ${5*diff} = ${totalVal}$. נחסר $${5*diff}$ ונקבל $15x = ${totalVal - 5*diff}$. נחלק ב-15 ונקבל $x = ${x}$.`,
+                        correctAnswer: x
+                    };
+                }
+            ];
+
+            const loadQuestion = (index, isRemedial, prevText = null) => {
+                const generator = questionGenerators[index];
+                let qData;
+                let attempts = 0;
+                
+                // Keep generating until we get a question that is different from the previous one
+                do {
+                    qData = generator();
+                    attempts++;
+                } while (prevText && qData.text === prevText && attempts < 20);
+
+                setCurrentQ({
+                    ...qData,
+                    options: generateOptions(qData.correctAnswer),
+                    isRemedial
+                });
+                setFeedback(null);
+            };
+
+            const handleSetupSubmit = (e) => {
+                e.preventDefault();
+                if (userName.trim() && userGender) {
+                    setStartTime(new Date());
+                    setStep('learning');
+                    loadQuestion(0, false);
+                }
+            };
+
+            const handleAnswer = (selectedAns) => {
+                if (isTransitioning) return;
+                
+                if (selectedAns === currentQ.correctAnswer) {
+                    setFeedback({
+                        status: 'success',
+                        message: `${getRandomPraise()}, ${userName}!`,
+                    });
+                } else {
+                    setFeedback({
+                        status: 'error',
+                        message: 'לא בדיוק...',
+                        data: {
+                            correctAnswer: currentQ.correctAnswer,
+                            explanation: currentQ.explanation
+                        }
+                    });
+                }
+            };
+
+            const handleNext = () => {
+                setIsTransitioning(true);
+                setTimeout(() => {
+                    if (feedback.status === 'error') {
+                        setInRemedial(true);
+                        // Pass currentQ.text to ensure the new question is different
+                        loadQuestion(questionIndex, true, currentQ.text);
+                    } else {
+                        if (inRemedial) setInRemedial(false);
+                        const nextIndex = questionIndex + 1;
+                        if (nextIndex < questionGenerators.length) {
+                            setQuestionIndex(nextIndex);
+                            loadQuestion(nextIndex, false);
+                        } else {
+                            setEndTime(new Date());
+                            setStep('summary');
+                        }
+                    }
+                    setIsTransitioning(false);
+                }, 300);
+            };
+
+            if (step === 'setup') {
+                return (
+                    <div className="flex items-center justify-center min-h-screen p-4">
+                        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border-t-8 border-blue-500">
+                            <h1 className="text-3xl font-bold text-center text-blue-800 mb-6">לומדת אלגברה: בעיות מילוליות</h1>
+                            <form onSubmit={handleSetupSubmit} className="space-y-6">
+                                <div>
+                                    <label className="block text-gray-700 font-semibold mb-2">איך קוראים לך?</label>
+                                    <input 
+                                        type="text" 
+                                        value={userName}
+                                        onChange={(e) => setUserName(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="הזן/י שם פרטי"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-gray-700 font-semibold mb-2">אני:</label>
+                                    <div className="flex gap-4">
+                                        <label className={`flex-1 text-center py-3 rounded-lg border-2 cursor-pointer transition-colors ${userGender === 'male' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                                            <input type="radio" name="gender" value="male" className="hidden" onChange={() => setUserGender('male')} required />
+                                            תלמיד
+                                        </label>
+                                        <label className={`flex-1 text-center py-3 rounded-lg border-2 cursor-pointer transition-colors ${userGender === 'female' ? 'border-pink-500 bg-pink-50 text-pink-700 font-bold' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                                            <input type="radio" name="gender" value="female" className="hidden" onChange={() => setUserGender('female')} required />
+                                            תלמידה
+                                        </label>
+                                    </div>
+                                </div>
+                                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-md text-lg">
+                                    התחל למידה
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (step === 'summary') {
+                return (
+                    <div className="flex items-center justify-center min-h-screen p-4">
+                        <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-lg w-full text-center border-4 border-green-500 relative overflow-hidden">
+                            <div className="absolute top-[-20px] left-[-20px] text-6xl opacity-20">🎉</div>
+                            <div className="absolute bottom-[-20px] right-[-20px] text-6xl opacity-20">🏆</div>
+                            
+                            <h1 className="text-4xl font-bold text-green-600 mb-6">כל הכבוד!</h1>
+                            <p className="text-xl text-gray-800 font-medium mb-4">
+                                סיימת את הלומדה בנושא פתרון בעיות מילוליות.
+                            </p>
+                            <p className="text-lg text-gray-600 mb-6">
+                                {g("הפגנת ידע מרשים והתמדה בבנייה ופתרון של משוואות. המשך כך!", "הפגנת ידע מרשים והתמדה בבנייה ופתרון של משוואות. המשיכי כך!")}
+                            </p>
+                            
+                            <div className="bg-green-50 p-5 rounded-xl text-right mb-8 border border-green-200">
+                                <p className="text-slate-700 font-medium mb-3 flex justify-between items-center border-b border-green-200 pb-2">
+                                    <span className="font-bold text-green-800">התחלת הפעילות:</span> 
+                                    <span dir="ltr" className="text-sm bg-white px-3 py-1 rounded-lg shadow-sm border border-green-100">{formatDateTime(startTime)}</span>
+                                </p>
+                                <p className="text-slate-700 font-medium flex justify-between items-center">
+                                    <span className="font-bold text-green-800">משך זמן:</span> 
+                                    <span className="text-sm bg-white px-3 py-1 rounded-lg shadow-sm border border-green-100">{formatDuration(startTime, endTime)}</span>
+                                </p>
+                            </div>
+
+                            <button onClick={() => window.location.reload()} className="w-full mt-2 bg-green-100 text-green-700 hover:bg-green-200 font-bold py-3 px-8 rounded-xl transition shadow-sm">
+                                התחל מחדש
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 flex flex-col max-w-5xl mx-auto">
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm">
+                        <div className="text-lg font-semibold text-gray-600">
+                            שלום, <span className="text-blue-600">{userName}</span>
+                        </div>
+                        <div className="text-lg font-bold text-blue-800 bg-blue-100 px-4 py-1 rounded-full">
+                            שאלה {questionIndex + 1} מתוך 10
+                            {inRemedial && <span className="text-orange-500 mr-2 text-sm">(שאלה נוספת)</span>}
+                        </div>
+                    </div>
+
+                    {/* Question Card Area */}
+                    {currentQ && (
+                        <div className={`flex flex-col lg:flex-row gap-6 transition-opacity duration-300 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
+                            
+                            {/* Main Question View */}
+                            <div className="flex-1 bg-white p-6 md:p-10 rounded-2xl shadow-lg border border-gray-100 flex flex-col justify-between">
+                                <div>
+                                    <p className="text-2xl text-gray-800 leading-relaxed mb-10 font-medium">
+                                        {currentQ.text}
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 mt-auto">
+                                    {currentQ.options.map((opt, i) => (
+                                        <button 
+                                            key={i}
+                                            onClick={() => handleAnswer(opt)}
+                                            disabled={feedback !== null}
+                                            className={`option-btn py-4 px-6 text-2xl font-bold rounded-xl border-2 transition-all
+                                                ${feedback === null ? 'border-blue-100 text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300' : 'opacity-60 cursor-not-allowed border-gray-200 bg-gray-50 text-gray-500'}
+                                                ${feedback && feedback.status === 'error' && opt === currentQ.correctAnswer ? 'ring-4 ring-green-400 bg-green-50 text-green-700 border-green-500 opacity-100' : ''}
+                                                ${feedback && feedback.status === 'success' && opt === currentQ.correctAnswer ? 'bg-green-100 text-green-700 border-green-500 opacity-100' : ''}
+                                                ${feedback && feedback.status === 'error' && opt !== currentQ.correctAnswer && !currentQ.options.includes(opt) ? 'bg-red-50 text-red-500 border-red-300' : ''}
+                                            `}
+                                        >
+                                            {opt}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Feedback Sidebar View */}
+                            <div className="w-full lg:w-[40%] min-h-[350px]">
+                                {feedback && (
+                                    <div className={`h-full p-6 rounded-2xl shadow-lg flex flex-col justify-between animate-pop
+                                        ${feedback.status === 'success' ? 'bg-green-50 border-2 border-green-400' : 'bg-red-50 border-2 border-red-400'}
+                                    `}>
+                                        <div>
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <span className="text-4xl">
+                                                    {feedback.status === 'success' ? '🥳' : '🤔'}
+                                                </span>
+                                                <h3 className={`text-2xl font-bold ${feedback.status === 'success' ? 'text-green-700' : 'text-red-700'}`}>
+                                                    {feedback.message}
+                                                </h3>
+                                            </div>
+
+                                            {feedback.status === 'error' && (
+                                                <div className="mt-4 text-gray-800">
+                                                    <p className="font-semibold text-lg mb-3">התשובה הנכונה היא: <span className="text-green-700 font-bold bg-green-100 px-2 py-1 rounded">{feedback.data.correctAnswer}</span></p>
+                                                    <div className="bg-white p-5 rounded-xl border border-red-100 text-base leading-loose shadow-sm">
+                                                        <p className="font-bold mb-2 text-blue-900 border-b pb-1">איך פותרים?</p>
+                                                        <div>
+                                                            {renderMathText(feedback.data.explanation)}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <button 
+                                            onClick={handleNext}
+                                            className={`mt-6 w-full font-bold py-4 px-4 rounded-xl shadow-md transition-colors text-xl
+                                                ${feedback.status === 'success' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
+                                            `}
+                                        >
+                                            {feedback.status === 'success' ? g('לשאלה הבאה', 'לשאלה הבאה') : g('נסה שוב בשאלה דומה', 'נסי שוב בשאלה דומה')}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
